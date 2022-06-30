@@ -40,15 +40,9 @@ void adicionar_equipamento(int socketEquipamento) {
             if(!equipamentos[posicao]){
                 equipamentos[posicao] = true;
                 sprintf(idEquipamento, "%d", posicao + 1);
-		printf("OLHA idEquipment: %s\n", idEquipamento);
                 strcat(msg, "03,");
-		printf("OLHA msg: %s\n", msg);
                 strcat(msg, idEquipamento);
-		printf("OLHA idEquipment: %s\n", idEquipamento);
-		printf("OLHA msg: %s\n", msg);
 		strcat(msg, ", , ");
-		printf("OLHA msg: %s\n", msg);
-                printf("OLHA idEquipment: %s\n", idEquipamento);
 		print_equipamento_adicionado(idEquipamento);
                 numEquipamentos++;
                 break;
