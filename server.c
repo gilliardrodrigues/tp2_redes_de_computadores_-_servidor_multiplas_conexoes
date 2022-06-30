@@ -12,280 +12,59 @@
 #include <sys/types.h>
 
 #define BUFSZ 500
-#define MAX_SENSORES_POR_VEZ 3
+#define MAX_EQUIPAMENTOS 15
 
-struct client_data {
-	int socketCliente;
+bool equipamentos[MAX_EQUIPAMENTOS] = { false };
+int numEquipamentos = 0;
+
+struct equipment_data {
+	int equipmentSocket;
 	struct sockaddr_storage storage;
 };
 
-bool sistema[4][4] = { false };
-int qtdSensoresDisponiveis = 15;
-
-
-int validaId(char *strId) {
-    if(strlen(strId) != 2)
-        return -1;
-    int id = atoi(strId);
-    if(id < 1 || id > 4)
-        return -1;
-    return 0;
+void print_equipamento_adicionado(char* idEquipamento) {
+    if(atoi(idEquipamento) < 10)
+        printf("Equipment 0%s added\n", idEquipamento);
+    else
+        printf("Equipment %s added\n", idEquipamento);
 }
 
-void instalarSensor(char *instrucao, int socketCliente) {
-     char msg[500];
-    memset(msg, 0, 500);
-    int sensores[MAX_SENSORES_POR_VEZ];
-    char *entrada = strtok(instrucao, " ");
-    entrada = strtok(instrucao, " "); //Pula a palavra 'sensor' na instrução de entrada.
-    int numSensores = 0;
-    bool atingiuMaxSensores = false;
-    bool entradaInvalida = false;
-    while(strcmp(entrada, "in") != 0 && !entradaInvalida) { //Para de iterar após o último sensor
-        if(validaId(entrada) == -1){
-            entradaInvalida = true;
-            strcat(msg, "invalid sensor ");
-        }
-        else {
-            sensores[numSensores] = atoi(entrada);
-            numSensores++;
-        }
-        entrada = strtok(NULL, " ");
-    }
-    entrada = strtok(NULL, " ");
-    char msgSensorDuplicado[100];
-    memset(msgSensorDuplicado, 0, 100);
-    if(!entradaInvalida){
-        if(validaId(entrada) == -1)
-            strcat(msg, "invalid equipment ");
-        else {
-            int equipamentoId = atoi(entrada);
-            strcat(msg, "sensor");
-            char idStr[4];
-            bool fezAlteracao = false;
-            for(int i = 0; i < numSensores; i++){
-                if(!sistema[equipamentoId-1][sensores[i]-1]){ //Verifica se o sensor já está instalado
-                    if(qtdSensoresDisponiveis > 0){
-                        sistema[equipamentoId-1][sensores[i]-1] = true; //Instala o sensor
-                        sprintf(idStr, " 0%d", sensores[i]);
-                        strcat(msg, idStr);
-                        qtdSensoresDisponiveis -= 1;
-                        fezAlteracao = true;
-                    }
-                    else {
-                        atingiuMaxSensores = true;
-                        memset(msg, 0, 500);
-                        strcpy(msg, "limit exceeded ");
-                        break;
-                    }
-                }
-                else {
-                   sprintf(idStr, "0%d ", sensores[i]);
-                    strcat(msgSensorDuplicado, idStr);
-                }
-            }
-            if(strcmp(msgSensorDuplicado, "") != 0) {
-                strcat(msgSensorDuplicado, "already exists in ");
-                sprintf(idStr, "0%d ", equipamentoId);
-                strcat(msgSensorDuplicado, idStr);
-            }
-            if(!atingiuMaxSensores && (strcmp(msgSensorDuplicado, "") != 0 && fezAlteracao))
-                strcat(msg, " added ");
-            else if(!atingiuMaxSensores && fezAlteracao)
-                strcat(msg, " added ");
-            else
-                strcat(msg, " ");
-            strcat(msg, msgSensorDuplicado);
-        }
-    }
-    msg[strlen(msg)-1] = '\n';
-    int numBytes = send(socketCliente, msg, strlen(msg), 0); //Envia a mensagem
-    if(numBytes != strlen(msg))
-        exibirLogSaida("send");
-}
-
-void consultarEquipamento(char *instrucao, int socketCliente) {
+void adicionar_equipamento(int socketEquipamento) {
+    char idEquipamento[4];
     char msg[500];
     memset(msg, 0, 500);
-    bool entrou = false;
-    char *texto = strtok(instrucao, " ");
-    while(strcmp(texto, "in") != 0) {
-        texto = strtok(NULL, " ");
-    }
-    char *id = strtok(NULL, " ");
-    if(validaId(id) == -1) {
-        strcat(msg, "invalid equipment ");
-    }
-    else {
-    int idEquipamento = atoi(id);
-    char idSensor[4];
-    for(int i = 0; i < 4; i++) {
-        if(sistema[idEquipamento-1][i] == true) {
-            sprintf(idSensor, "0%d ", i+1);
-            strcat(msg, idSensor);
-            entrou = true;
+    if(numEquipamentos == MAX_EQUIPAMENTOS)
+        strcat(msg, "07,04, , ");
+    else{
+        for(int posicao = 8; posicao < MAX_EQUIPAMENTOS; posicao++){
+            if(!equipamentos[posicao]){
+                equipamentos[posicao] = true;
+                sprintf(idEquipamento, "%d", posicao + 1);
+		printf("OLHA idEquipment: %s\n", idEquipamento);
+                strcat(msg, "03,");
+		printf("OLHA msg: %s\n", msg);
+                strcat(msg, idEquipamento);
+		printf("OLHA idEquipment: %s\n", idEquipamento);
+		printf("OLHA msg: %s\n", msg);
+		strcat(msg, ", , ");
+		printf("OLHA msg: %s\n", msg);
+                printf("OLHA idEquipment: %s\n", idEquipamento);
+		print_equipamento_adicionado(idEquipamento);
+                numEquipamentos++;
+                break;
+            }
         }
     }
-    if(!entrou)
-        strcat(msg, "none ");
-    }
-    msg[strlen(msg)-1] = '\n';
-    int numBytes = send(socketCliente, msg, strlen(msg), 0);
+    
+    int numBytes = send(socketEquipamento, msg, strlen(msg), 0); //Envia a mensagem
     if(numBytes != strlen(msg))
         exibirLogSaida("send");
-}
 
-void removerSensor(char *instrucao, int socketCliente) {
-    char msg[500];
-    memset(msg, 0, 500);
-    int sensores[MAX_SENSORES_POR_VEZ];
-    char *entrada = strtok(instrucao, " ");
-    entrada = strtok(instrucao, " ");
-    int numSensores = 0;
-    bool entradaInvalida = false;
-    while(strcmp(entrada, "in") != 0 && !entradaInvalida) {
-        if(validaId(entrada) == -1) {
-            entradaInvalida = true;
-            strcat(msg, "invalid sensor ");
-        }
-        else {
-            sensores[numSensores] = atoi(entrada);
-            numSensores++;
-        }
-        entrada = strtok(NULL, " ");
-    }
-    entrada = strtok(NULL, " ");
-    char msgSensorNaoExiste[100];
-    memset(msgSensorNaoExiste, 0, 100);
-    if(!entradaInvalida) {
-        if(validaId(entrada) == -1)
-            strcat(msg, "invalid equipment ");
-        else {
-            int equipamentoId = atoi(entrada);
-            strcat(msg, "sensor");
-            char idStr[4];
-            bool fezExclusao = false;
-            for(int i = 0; i < numSensores; i++) {
-                if(sistema[equipamentoId-1][sensores[i]-1]) {
-                    sistema[equipamentoId-1][sensores[i]-1] = false;
-                    sprintf(idStr, " 0%d", sensores[i]);
-                    strcat(msg, idStr);
-                    qtdSensoresDisponiveis += 1;
-                    fezExclusao = true;
-                }
-                else {
-                    sprintf(idStr, "0%d ", sensores[i]);
-                    strcat(msgSensorNaoExiste, idStr);
-                }
-            }
-            if(strcmp(msgSensorNaoExiste, "") != 0) {
-                strcat(msgSensorNaoExiste, "does not exist in ");
-                sprintf(idStr, "0%d ", equipamentoId);
-                strcat(msgSensorNaoExiste, idStr);
-            }
-            if(strcmp(msgSensorNaoExiste, "") != 0 && fezExclusao)
-                strcat(msg, " removed ");
-            else if(fezExclusao)
-                strcat(msg, " removed ");
-            else
-                strcat(msg, " ");
-            strcat(msg, msgSensorNaoExiste);
-        }
-    }
-    msg[strlen(msg)-1] = '\n';
-    int numBytes = send(socketCliente, msg, strlen(msg), 0);
-    if(numBytes != strlen(msg))
-        exibirLogSaida("send");
-}
-
-double gerarLeituraSensor() {
-    return (double)(rand() % 1001)/100;
-}
-
-void consultarVariavelDeProcesso(char *instrucao, int socketCliente) {
-    char msg[500];
-    memset(msg, 0, 500);
-    int sensores[MAX_SENSORES_POR_VEZ];
-    char *entrada = strtok(instrucao, " ");
-    int numSensores = 0;
-    bool entradaInvalida = false;
-    while(strcmp(entrada, "in") != 0 && !entradaInvalida) {
-        if(validaId(entrada) == -1) {
-            entradaInvalida = true;
-            strcat(msg, "invalid sensor ");
-        }
-        else {
-            sensores[numSensores] = atoi(entrada);
-            numSensores++;
-        }
-        entrada = strtok(NULL, " ");
-    }
-    entrada = strtok(NULL, " ");
-    char msgSensorNaoInstalado[100];
-    memset(msgSensorNaoInstalado, 0, 100);
-    if(!entradaInvalida){
-        if(validaId(entrada) == -1)
-            strcat(msg, "invalid equipment ");
-        else {
-            int equipamentoId = atoi(entrada);
-            char idStr[4];
-            bool fezAlgumaLeitura = false;
-            char leituraStr[6];
-            for(int i = 0; i < numSensores; i++) {
-                if(sistema[equipamentoId-1][sensores[i]-1]) {
-                    sprintf(leituraStr, "%.2f ", gerarLeituraSensor());
-                    strcat(msg, leituraStr);
-                    fezAlgumaLeitura = true;
-                }
-                else {
-                    sprintf(idStr, "0%d ", sensores[i]);
-                    strcat(msgSensorNaoInstalado, idStr);
-                }
-            }
-            if(fezAlgumaLeitura && strcmp(msgSensorNaoInstalado, "") != 0) {
-                strcat(msg, "and ");
-                strcat(msg, msgSensorNaoInstalado);
-                strcat(msg, "not installed ");
-            }
-            else if(strcmp(msgSensorNaoInstalado, "") != 0) {
-                 strcpy(msg, msgSensorNaoInstalado);
-                 strcat(msg, "not installed ");
-            }
-        }
-    }
-    msg[strlen(msg)-1] = '\n';
-    int numBytes = send(socketCliente, msg, strlen(msg), 0);
-    if(numBytes != strlen(msg))
-        exibirLogSaida("send");
-}
-
-int avaliarComando(char *comando, int socketCliente) {
-    char *instrucao = strtok(comando, " ");
-    while(instrucao != NULL) {
-        if(strcmp(instrucao, "add") == 0) {
-            instalarSensor(NULL, socketCliente);
-        }
-        else if(strcmp(instrucao, "remove") == 0) {
-            removerSensor(NULL, socketCliente);
-        }
-        else if(strcmp(instrucao, "list") == 0) {
-            consultarEquipamento(NULL, socketCliente);
-        }
-        else if(strcmp(instrucao, "read") == 0) {
-            consultarVariavelDeProcesso(NULL, socketCliente);
-        }
-        else {
-            close(socketCliente);
-            return -1;
-        }
-        instrucao = strtok(NULL, " ");
-    }
-    return 0;
 }
 
 void *client_thread(void *data) {
 
-	struct client_data *cdata = (struct client_data *) data;
+	struct equipment_data *cdata = (struct equipment_data *) data;
 	struct sockaddr *caddr = (struct sockaddr *) (&cdata->storage);
 
 	char caddrstr[BUFSZ];
@@ -293,6 +72,7 @@ void *client_thread(void *data) {
 	printf("[log] connection from %s\n", caddrstr);
 
 	char buff[BUFSZ];
+        adicionar_equipamento(cdata->equipmentSocket);
 	int auxRetorno = 0;
 	unsigned totalBytes;
 	size_t numBytes;
@@ -301,7 +81,7 @@ void *client_thread(void *data) {
 	    memset(buff, 0, BUFSZ);
 	    totalBytes = 0;
 	    while(buff[strlen(buff)-1] != '\n') {
-	        numBytes = recv(cdata->socketCliente, buff + totalBytes, BUFSZ - totalBytes, 0);
+	        numBytes = recv(cdata->equipmentSocket, buff + totalBytes, BUFSZ - totalBytes, 0);
 	        if(numBytes == 0){
 	            auxRetorno = -1;
 	            break;
@@ -313,15 +93,15 @@ void *client_thread(void *data) {
 	    printf("%s", buff);
 	    linhas = strtok(buff, "\n");
 	    if(strcmp(buff, "kill") == 0){
-	        close(cdata->socketCliente);
+	        close(cdata->equipmentSocket);
 	        exit(EXIT_SUCCESS);
 	        return 0;
 	    }
 
 	    while(linhas != NULL){
-		auxRetorno = avaliarComando(buff, cdata->socketCliente);
+		//auxRetorno = avaliarComando(buff, cdata->equipmentSocket);
 		if(auxRetorno == -1){
-	            close(cdata->socketCliente);
+	            close(cdata->equipmentSocket);
 	            exit(EXIT_SUCCESS);
 	            return 0;
 	        }
@@ -330,7 +110,7 @@ void *client_thread(void *data) {
 	    if(auxRetorno == -1)
 	        break;
 	}
-	close(cdata->socketCliente);
+	close(cdata->equipmentSocket);
 
 	pthread_exit(EXIT_SUCCESS);
 }
@@ -375,7 +155,8 @@ int main(int argc, char **argv) {
     char addrstr[BUFSZ];
     converterEnderecoEmString(addr, addrstr, BUFSZ);
     printf("bound to %s, waiting connections\n", addrstr);
-
+    //memset(equipamentos, 0, sizeof(equipamentos)); //Resetando o array de equipamentos
+    
     while (1) {
         struct sockaddr_storage cstorage;
         struct sockaddr *caddr = (struct sockaddr *)(&cstorage);
@@ -385,10 +166,10 @@ int main(int argc, char **argv) {
 	if (socketCliente == -1) {
 	    exibirLogSaida("accept");
 	}
-	struct client_data *cdata = malloc(sizeof(*cdata));
+	struct equipment_data *cdata = malloc(sizeof(*cdata));
 	if(!cdata)
 	    exibirLogSaida("malloc");
-	cdata->socketCliente = socketCliente;
+	cdata->equipmentSocket = socketCliente;
 	memcpy(&(cdata->storage), &cstorage, sizeof(cstorage));
 
 	pthread_t tid;
