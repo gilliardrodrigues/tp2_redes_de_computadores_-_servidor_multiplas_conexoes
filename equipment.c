@@ -8,13 +8,20 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+#include <pthread.h>
+
+#define BUFFERSIZE 500
+
+struct client_data {
+    int csock;
+}; ///
+
+
 void exibirInstrucoesDeUso(int argc, char **argv) {
     printf("Uso: %s <IP do servidor> <Porta do servidor>\n", argv[0]);
     printf("Exemplo: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
 }
-
-#define BUFFERSIZE 500
 
 void interpretar_res_add(char *payload) {
 
@@ -22,6 +29,11 @@ void interpretar_res_add(char *payload) {
         printf("New ID: 0%s\n", payload);
     else
         printf("New ID: %s\n", payload);
+}
+
+void interpretar_req_add(char *novoId) {
+
+    printf("Equipment %s added\n", novoId);
 }
 
 void interpretar_erro(int socketEquipamento, char* idDestino, char* payload) {
@@ -38,13 +50,16 @@ void interpretar_erro(int socketEquipamento, char* idDestino, char* payload) {
 }
 
 void interpretar_resposta(char buff[BUFFERSIZE], int socketEquipamento) {
-    
+
     char *idMsg = strtok(buff, ",");
     char *payload = strtok(NULL, ",");
     char *idOrigem = strtok(NULL, ",");
     char *idDestino = strtok(NULL, ",");
 
     switch(atoi(idMsg)) {
+        case 1:
+	    interpretar_req_add(idOrigem);
+	    break;
         case 3:
             interpretar_res_add(payload);
             break;
@@ -57,6 +72,21 @@ void interpretar_resposta(char buff[BUFFERSIZE], int socketEquipamento) {
 
 }
 
+/////
+void * client_thread(void *data) {
+    struct client_data *cdata = (struct client_data *)data;
+
+    while(1){
+	char buff[BUFFERSIZE];
+	memset(buff, 0, BUFFERSIZE);
+	recv(cdata->csock, buff, BUFFERSIZE + 1, 0);
+
+	if(strlen(buff)!= 0)
+            interpretar_resposta(buff,cdata->csock);
+    }
+    exit(EXIT_SUCCESS);
+}
+/////
 
 int main(int argc, char **argv) {
 
@@ -66,12 +96,12 @@ int main(int argc, char **argv) {
     struct sockaddr_storage storage;
     if(parsearEndereco(argv[1], argv[2], &storage) != 0)
         exibirInstrucoesDeUso(argc, argv);
-    
+
     int socket_;
     socket_ = socket(storage.ss_family, SOCK_STREAM, 0);
     if(socket_ == -1)
         exibirLogSaida("socket");
-    
+
     struct sockaddr *endereco = (struct sockaddr *) (&storage);
     if(connect(socket_, endereco, sizeof(storage)) != 0)
         exibirLogSaida("connect");
@@ -83,12 +113,22 @@ int main(int argc, char **argv) {
     memset(buff, 0, BUFFERSIZE);
     recv(socket_, buff, BUFFERSIZE, 0);
     interpretar_resposta(buff, socket_);
-
+/////
     while(1){
 	printf("> ");
 	memset(buff, 0, BUFFERSIZE);
 	size_t numBytes;
 	while(buff[strlen(buff)-1] != '\n'){
+	    memset(buff, 0, BUFFERSIZE);
+            struct client_data *cdata = malloc(sizeof(*cdata));
+	    if (!cdata) {
+		exibirLogSaida("malloc");
+	    }
+	    cdata->csock = socket_;
+
+            pthread_t tid;
+            pthread_create(&tid, NULL, client_thread, cdata);
+
 	    memset(buff, 0, BUFFERSIZE);
 	    fgets(buff, BUFFERSIZE-1, stdin);
 	    numBytes = send(socket_, buff, strlen(buff), 0);
@@ -96,6 +136,7 @@ int main(int argc, char **argv) {
 	        exibirLogSaida("send");
    	    }
 	}
+    /////
 
 	if(strcmp(buff, "kill\n") == 0){
 	    close(socket_);
@@ -112,9 +153,8 @@ int main(int argc, char **argv) {
 	    totalBytes += numBytes;
 	}
 	printf("< %s", buff);
+    ///close(socket_);
     }
-    close(socket_);
-
     exit(EXIT_SUCCESS);
 }
 
