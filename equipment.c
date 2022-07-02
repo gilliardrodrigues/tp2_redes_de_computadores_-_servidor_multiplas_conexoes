@@ -7,154 +7,148 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-
 #include <pthread.h>
 
-#define BUFFERSIZE 500
+#define BUFSZ 1024
 
-struct client_data {
-    int csock;
-}; ///
-
-
-void exibirInstrucoesDeUso(int argc, char **argv) {
-    printf("Uso: %s <IP do servidor> <Porta do servidor>\n", argv[0]);
-    printf("Exemplo: %s 127.0.0.1 51511\n", argv[0]);
-    exit(EXIT_FAILURE);
-}
-
-void interpretar_res_add(char *payload) {
-
-    if(atoi(payload) < 10)
-        printf("New ID: 0%s\n", payload);
-    else
-        printf("New ID: %s\n", payload);
-}
+struct equipamento {
+    int socketEquip;
+};
 
 void interpretar_req_add(char *novoId) {
 
     printf("Equipment %s added\n", novoId);
 }
 
-void interpretar_erro(int socketEquipamento, char* idDestino, char* payload) {
+void interpretar_res_list(char *payload){
 
-    switch(atoi(payload)) {
-        case 4:
-            printf("Equipment limit exceeded\n");
-            close(socketEquipamento);
-            break;
-        default:
-            break;
-
-    }
+	printf("%s\n", payload);
 }
 
-void interpretar_resposta(char buff[BUFFERSIZE], int socketEquipamento) {
-
-    char *idMsg = strtok(buff, ",");
-    char *payload = strtok(NULL, ",");
-    char *idOrigem = strtok(NULL, ",");
-    char *idDestino = strtok(NULL, ",");
-
-    switch(atoi(idMsg)) {
-        case 1:
-	    interpretar_req_add(idOrigem);
-	    break;
-        case 3:
-            interpretar_res_add(payload);
-            break;
-        case 7:
-            interpretar_erro(socketEquipamento, idDestino, payload);
-            break;
-        default:
-            break;
+void interpretar_erro(int socketEquipamento, char *idDestino, char *payload) {
+   
+   switch(atoi(payload)) {
+	case 4:
+		printf("Equipment limit exceeded\n");
+		close(socketEquipamento);
+		break;
+	default:
+		break;
     }
 
 }
 
-/////
+void interpretar_res_add(char *payload){
+   
+	int idEquipamento = atoi(payload);
+	if(idEquipamento < 10)
+        printf("New ID: 0%d\n", idEquipamento);
+    else
+        printf("New ID: %d\n", idEquipamento);
+
+}
+
+void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
+	/*
+	char *idMsg = malloc(sizeof(char)*BUFSZ);
+	char *idOrigem = malloc(sizeof(char)*BUFSZ);
+	char *idDestino = malloc(sizeof(char)*BUFSZ);
+	char *payload = malloc(sizeof(char)*BUFSZ);
+	*/
+
+	char *idMsg = strtok(buffer, ",");
+	char *idOrigem = strtok(NULL, ",");
+	char *idDestino = strtok(NULL, ",");
+	char *payload = strtok(NULL, "");
+
+	switch (atoi(idMsg)) {	
+	case 1:
+		interpretar_req_add(idOrigem);
+		break;
+	case 3:
+		interpretar_res_add(payload);
+		break;
+	case 4:
+		interpretar_res_list(payload);
+		break;
+	case 7:
+		interpretar_erro(socketEquipamento, idDestino, payload);
+		break;
+	default:
+		break;
+	}
+}
+
+void exibir_instrucoes_de_uso(int argc, char **argv) {
+    printf("Uso: %s <IP do servidor> <Porta do servidor>\n", argv[0]);
+    printf("Exemplo: %s 127.0.0.1 51511\n", argv[0]);
+    exit(EXIT_FAILURE);
+}
+
 void * client_thread(void *data) {
-    struct client_data *cdata = (struct client_data *)data;
+    struct equipamento *equipData = (struct equipamento *)data;
 
-    while(1){
-	char buff[BUFFERSIZE];
-	memset(buff, 0, BUFFERSIZE);
-	recv(cdata->csock, buff, BUFFERSIZE + 1, 0);
-
-	if(strlen(buff)!= 0)
-            interpretar_resposta(buff,cdata->csock);
-    }
-    exit(EXIT_SUCCESS);
+	while(1){
+		char buffer[BUFSZ];
+		memset(buffer, 0, BUFSZ);
+		recv(equipData->socketEquip, buffer, BUFSZ + 1, 0);
+		if(strlen(buffer)!= 0){
+			interpretar_resposta(buffer,equipData->socketEquip);
+		}
+	}
+	exit(EXIT_SUCCESS);
 }
-/////
+
 
 int main(int argc, char **argv) {
 
-    if(argc < 3) 
-        exibirInstrucoesDeUso(argc, argv);
-
-    struct sockaddr_storage storage;
-    if(parsearEndereco(argv[1], argv[2], &storage) != 0)
-        exibirInstrucoesDeUso(argc, argv);
-
-    int socket_;
-    socket_ = socket(storage.ss_family, SOCK_STREAM, 0);
-    if(socket_ == -1)
-        exibirLogSaida("socket");
-
-    struct sockaddr *endereco = (struct sockaddr *) (&storage);
-    if(connect(socket_, endereco, sizeof(storage)) != 0)
-        exibirLogSaida("connect");
-
-    char addrstr[BUFFERSIZE];
-    converterEnderecoEmString(endereco, addrstr, BUFFERSIZE);
-    printf("connected to %s\n", addrstr);
-    char buff[BUFFERSIZE];
-    memset(buff, 0, BUFFERSIZE);
-    recv(socket_, buff, BUFFERSIZE, 0);
-    interpretar_resposta(buff, socket_);
-/////
-    while(1){
-	printf("> ");
-	memset(buff, 0, BUFFERSIZE);
-	size_t numBytes;
-	while(buff[strlen(buff)-1] != '\n'){
-	    memset(buff, 0, BUFFERSIZE);
-            struct client_data *cdata = malloc(sizeof(*cdata));
-	    if (!cdata) {
-		exibirLogSaida("malloc");
-	    }
-	    cdata->csock = socket_;
-
-            pthread_t tid;
-            pthread_create(&tid, NULL, client_thread, cdata);
-
-	    memset(buff, 0, BUFFERSIZE);
-	    fgets(buff, BUFFERSIZE-1, stdin);
-	    numBytes = send(socket_, buff, strlen(buff), 0);
-	    if (numBytes != strlen(buff)) {
-	        exibirLogSaida("send");
-   	    }
+	if (argc < 3) {
+		exibir_instrucoes_de_uso(argc, argv);
 	}
-    /////
 
-	if(strcmp(buff, "kill\n") == 0){
-	    close(socket_);
-	    exit(EXIT_SUCCESS);
+	struct sockaddr_storage storage;
+	if (analisar_endereco(argv[1], argv[2], &storage) != 0) {
+		exibir_instrucoes_de_uso(argc, argv);
 	}
-	memset(buff, 0, BUFFERSIZE);
-	unsigned totalBytes = 0;
-	while(buff[strlen(buff)-1] != '\n') {
-	    numBytes = recv(socket_, buff + totalBytes, BUFFERSIZE - totalBytes, 0);
-            //interpretar_resposta(buff, socket_);
-	    if(numBytes == 0) {
-	        break; // Fecha a conexão
-	    }
-	    totalBytes += numBytes;
+
+	int _socket;
+	_socket = socket(storage.ss_family, SOCK_STREAM, 0);
+	if (_socket == -1) {
+		exibir_log_saida("socket");
 	}
-	printf("< %s", buff);
-    ///close(socket_);
-    }
-    exit(EXIT_SUCCESS);
+	struct sockaddr *endereco = (struct sockaddr *)(&storage);
+	if (connect(_socket, endereco, sizeof(storage)) != 0) {
+		exibir_log_saida("connect");
+	}
+
+	char enderecoStr[BUFSZ];
+	converter_endereco_em_string(endereco, enderecoStr, BUFSZ);
+	printf("connected to %s\n", enderecoStr);
+
+	char buffer[BUFSZ];
+	memset(buffer, 0, BUFSZ);
+	recv(_socket, buffer, BUFSZ, 0);
+	interpretar_resposta(buffer, _socket);
+	//memset(buffer, 0, BUFSZ);
+
+	while(1) {
+		memset(buffer, 0, BUFSZ);
+		struct equipamento *equipData = malloc(sizeof(*equipData));
+		if (!equipData) {
+			exibir_log_saida("malloc");
+		}
+		equipData->socketEquip = _socket;
+
+		pthread_t tid;
+		pthread_create(&tid, NULL, client_thread, equipData);
+
+		memset(buffer, 0, BUFSZ);
+		fgets(buffer, BUFSZ-1, stdin);
+		size_t numBytes = send(_socket, buffer, strlen(buffer)+1, 0);
+		if (numBytes != strlen(buffer)+1) {
+			exibir_log_saida("send");
+		}
+	}
+
+	exit(EXIT_SUCCESS);
 }
-

@@ -5,12 +5,12 @@
 
 #include <arpa/inet.h>
 
-void exibirLogSaida(const char *msg) {
-    perror(msg);
-    exit(EXIT_FAILURE);
+void exibir_log_saida(const char *msg) {
+	perror(msg);
+	exit(EXIT_FAILURE);
 }
 
-int parsearEndereco(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
+int analisar_endereco(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
     if(addrstr == NULL || portstr == NULL)
         return -1;
     uint16_t port = (uint16_t) atoi(portstr); // Unsigned short
@@ -29,12 +29,12 @@ int parsearEndereco(const char *addrstr, const char *portstr, struct sockaddr_st
     return -1;
 }
 
-void converterEnderecoEmString(const struct sockaddr *addr, char *str, size_t strsize) {
+void converter_endereco_em_string(const struct sockaddr *addr, char *str, size_t strsize) {
     char addrstr[INET6_ADDRSTRLEN + 1] = "";
     struct sockaddr_in *addr4 = (struct sockaddr_in *) addr;
 
-    if(!inet_ntop(AF_INET, &(addr4->sin_addr), addrstr, INET6_ADDRSTRLEN + 1)) 
-        exibirLogSaida("ntop");
+    if(!inet_ntop(AF_INET, &(addr4->sin_addr), addrstr, INET6_ADDRSTRLEN + 1))
+        exibir_log_saida("ntop");
     uint16_t port = ntohs(addr4->sin_port);
 
     if (str) {
@@ -42,7 +42,8 @@ void converterEnderecoEmString(const struct sockaddr *addr, char *str, size_t st
     }
 }
 
-int inicializarSockAddrServer(const char *portstr,struct sockaddr_storage *storage) {
+int inicializar_sock_addr_server(const char *portstr, struct sockaddr_storage *storage) {
+    
     uint16_t port = (uint16_t) atoi(portstr); // unsigned short
     if (port == 0)
         return -1;
@@ -58,4 +59,3 @@ int inicializarSockAddrServer(const char *portstr,struct sockaddr_storage *stora
 
     return 0;
 }
-

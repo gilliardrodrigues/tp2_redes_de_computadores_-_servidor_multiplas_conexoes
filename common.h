@@ -4,12 +4,11 @@
 
 #include <arpa/inet.h>
 
-void exibirLogSaida(const char *msg);
+void exibir_log_saida(const char *msg);
 
-int parsearEndereco(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
+int analisar_endereco(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 
-void converterEnderecoEmString(const struct sockaddr *addr, char *str, size_t strsize);
+void converter_endereco_em_string(const struct sockaddr *addr, char *str, size_t strsize);
 
-int inicializarSockAddrServer(const char *portstr, struct sockaddr_storage *storage);
-
+int inicializar_sock_addr_server(const char *portstr, struct sockaddr_storage *storage);
 
