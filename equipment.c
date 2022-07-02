@@ -9,11 +9,16 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define BUFSZ 1024
+#define BUFSZ 500
 
 struct equipamento {
     int socketEquip;
 };
+
+void interpretar_req_rem(char *idEquipamento) {
+
+	printf("Equipment %s removed\n", idEquipamento);
+}
 
 void interpretar_req_add(char *novoId) {
 
@@ -28,14 +33,17 @@ void interpretar_res_list(char *payload){
 void interpretar_erro(int socketEquipamento, char *idDestino, char *payload) {
    
    switch(atoi(payload)) {
+	case 1:
+		printf("Equipment not found\n");
+		break;
 	case 4:
 		printf("Equipment limit exceeded\n");
-		close(socketEquipamento);
 		break;
 	default:
 		break;
     }
-
+	close(socketEquipamento);
+	exit(EXIT_SUCCESS);
 }
 
 void interpretar_res_add(char *payload){
@@ -48,14 +56,17 @@ void interpretar_res_add(char *payload){
 
 }
 
-void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
-	/*
-	char *idMsg = malloc(sizeof(char)*BUFSZ);
-	char *idOrigem = malloc(sizeof(char)*BUFSZ);
-	char *idDestino = malloc(sizeof(char)*BUFSZ);
-	char *payload = malloc(sizeof(char)*BUFSZ);
-	*/
+void interpretar_ok(int socketEquipamento, char *payload) {
+	
+	if(atoi(payload) == 1) {
+		printf("Successful removal\n");
+		close(socketEquipamento);
+		exit(EXIT_SUCCESS);
+	}
+}
 
+void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
+	
 	char *idMsg = strtok(buffer, ",");
 	char *idOrigem = strtok(NULL, ",");
 	char *idDestino = strtok(NULL, ",");
@@ -65,6 +76,9 @@ void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
 	case 1:
 		interpretar_req_add(idOrigem);
 		break;
+	case 2:
+		interpretar_req_rem(idOrigem);
+		break;
 	case 3:
 		interpretar_res_add(payload);
 		break;
@@ -73,6 +87,9 @@ void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
 		break;
 	case 7:
 		interpretar_erro(socketEquipamento, idDestino, payload);
+		break;
+	case 8:
+		interpretar_ok(socketEquipamento, payload);
 		break;
 	default:
 		break;
@@ -129,7 +146,6 @@ int main(int argc, char **argv) {
 	memset(buffer, 0, BUFSZ);
 	recv(_socket, buffer, BUFSZ, 0);
 	interpretar_resposta(buffer, _socket);
-	//memset(buffer, 0, BUFSZ);
 
 	while(1) {
 		memset(buffer, 0, BUFSZ);
