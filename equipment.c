@@ -9,11 +9,30 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define BUFSZ 500
+#define TAMANHO_BUFFER 500
+#define REMOVIDO_COM_SUCESSO 1
 
 struct equipamento {
     int socketEquip;
 };
+
+enum tipos_de_erro {
+	EQUIPAMENTO_NAO_ENCONTRADO = 1, 
+	EQUIPAMENTO_SOLICITANTE_NAO_ENCONTRADO, 
+	EQUIPAMENTO_REQUISITADO_NAO_ENCONTRADO, 
+	NUM_MAXIMO_DE_EQUIPAMENTOS_ALCANCADO
+} erros;
+
+enum tipos_de_resposta {
+	REQ_ADD = 1,
+	REQ_REM,
+	RES_ADD,
+	RES_LIST,
+	REQ_INF,
+	RES_INF,
+	ERROR,
+	OK
+} respostas;
 
 void interpretar_res_inf(char *idEquipamento, char *informacao) {
 
@@ -42,17 +61,19 @@ void interpretar_res_list(char *payload){
 
 void interpretar_erro(int socketEquipamento, char *idDestino, char *payload) {
    
-   switch(atoi(payload)) {
-	case 1:
+	erros = atoi(payload);
+
+   switch(erros) {
+	case EQUIPAMENTO_NAO_ENCONTRADO:
 		printf("Equipment not found\n");
 		break;
-	case 2:
+	case EQUIPAMENTO_SOLICITANTE_NAO_ENCONTRADO:
 		printf("Source equipment not found\n");
 		break;
-	case 3:
+	case EQUIPAMENTO_REQUISITADO_NAO_ENCONTRADO:
 		printf("Target equipment not found\n");
 		break;
-	case 4:
+	case NUM_MAXIMO_DE_EQUIPAMENTOS_ALCANCADO:
 		printf("Equipment limit exceeded\n");
 		break;
 	default:
@@ -63,6 +84,7 @@ void interpretar_erro(int socketEquipamento, char *idDestino, char *payload) {
 void interpretar_res_add(char *payload){
    
 	int idEquipamento = atoi(payload);
+
 	if(idEquipamento < 10)
         printf("New ID: 0%d\n", idEquipamento);
     else
@@ -72,43 +94,45 @@ void interpretar_res_add(char *payload){
 
 void interpretar_ok(int socketEquipamento, char *payload) {
 	
-	if(atoi(payload) == 1) {
+	if(atoi(payload) == REMOVIDO_COM_SUCESSO) {
 		printf("Successful removal\n");
 		close(socketEquipamento);
 		exit(EXIT_SUCCESS);
 	}
 }
 
-void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
+void interpretar_resposta(char buffer[TAMANHO_BUFFER], int socketEquipamento){
 	
 	char *idMsg = strtok(buffer, ",");
 	char *idOrigem = strtok(NULL, ",");
 	char *idDestino = strtok(NULL, ",");
 	char *payload = strtok(NULL, "\n");
 
-	switch (atoi(idMsg)) {	
-	case 1:
+	respostas = atoi(idMsg);
+
+	switch (respostas) {	
+	case REQ_ADD:
 		interpretar_req_add(idOrigem);
 		break;
-	case 2:
+	case REQ_REM:
 		interpretar_req_rem(idOrigem);
 		break;
-	case 3:
+	case RES_ADD:
 		interpretar_res_add(payload);
 		break;
-	case 4:
+	case RES_LIST:
 		interpretar_res_list(payload);
 		break;
-	case 5:
+	case REQ_INF:
 		interpretar_req_inf();
 		break;
-	case 6:
+	case RES_INF:
 		interpretar_res_inf(idOrigem, payload);
 		break;
-	case 7:
+	case ERROR:
 		interpretar_erro(socketEquipamento, idDestino, payload);
 		break;
-	case 8:
+	case OK:
 		interpretar_ok(socketEquipamento, payload);
 		break;
 	default:
@@ -126,9 +150,9 @@ void * client_thread(void *data) {
     struct equipamento *equipData = (struct equipamento *)data;
 
 	while(1){
-		char buffer[BUFSZ];
-		memset(buffer, 0, BUFSZ);
-		recv(equipData->socketEquip, buffer, BUFSZ + 1, 0);
+		char buffer[TAMANHO_BUFFER];
+		memset(buffer, 0, TAMANHO_BUFFER);
+		recv(equipData->socketEquip, buffer, TAMANHO_BUFFER + 1, 0);
 		if(strlen(buffer)!= 0){
 			interpretar_resposta(buffer,equipData->socketEquip);
 		}
@@ -158,17 +182,17 @@ int main(int argc, char **argv) {
 		exibir_log_saida("connect");
 	}
 
-	char enderecoStr[BUFSZ];
-	converter_endereco_em_string(endereco, enderecoStr, BUFSZ);
-	printf("connected to %s\n", enderecoStr);
+	char enderecoStr[TAMANHO_BUFFER];
+	converter_endereco_em_string(endereco, enderecoStr, TAMANHO_BUFFER);
+	//printf("connected to %s\n", enderecoStr);
 
-	char buffer[BUFSZ];
-	memset(buffer, 0, BUFSZ);
-	recv(_socket, buffer, BUFSZ, 0);
+	char buffer[TAMANHO_BUFFER];
+	memset(buffer, 0, TAMANHO_BUFFER);
+	recv(_socket, buffer, TAMANHO_BUFFER, 0);
 	interpretar_resposta(buffer, _socket);
 
 	while(1) {
-		memset(buffer, 0, BUFSZ);
+		memset(buffer, 0, TAMANHO_BUFFER);
 		struct equipamento *equipData = malloc(sizeof(*equipData));
 		if (!equipData) {
 			exibir_log_saida("malloc");
@@ -178,8 +202,8 @@ int main(int argc, char **argv) {
 		pthread_t tid;
 		pthread_create(&tid, NULL, client_thread, equipData);
 
-		memset(buffer, 0, BUFSZ);
-		fgets(buffer, BUFSZ-1, stdin);
+		memset(buffer, 0, TAMANHO_BUFFER);
+		fgets(buffer, TAMANHO_BUFFER-1, stdin);
 		size_t numBytes = send(_socket, buffer, strlen(buffer)+1, 0);
 		if (numBytes != strlen(buffer)+1) {
 			exibir_log_saida("send");

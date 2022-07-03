@@ -11,8 +11,10 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#define BUFSZ 500
+#define TAMANHO_BUFFER 500
 #define MAX_EQUIPAMENTOS 15
+#define TAMANHO_ID 4 // Considerando espaços
+#define EQUIPAMENTO_NAO_EXISTE "ne"
 
 int sockets[MAX_EQUIPAMENTOS] = { 0 };
 bool equipamentos[MAX_EQUIPAMENTOS] = { false };
@@ -23,16 +25,21 @@ struct equipamento {
         struct sockaddr_storage storage;
 };
 
-void listar_equipamentos(char buffer[BUFSZ], int idSolicitante){
+bool equipamento_existe_e_nao_eh_o_solicitante(bool equipamentos[MAX_EQUIPAMENTOS], int posicao, int idSolicitante) {
 
-    memset(buffer, 0, BUFSZ);
+    return (equipamentos[posicao] && (posicao + 1) != idSolicitante);
+}
 
-    char *lista = malloc(sizeof(char)*BUFSZ);
-    char idEquipamento[4];
+void listar_equipamentos(char buffer[TAMANHO_BUFFER], int idSolicitante){
+
+    memset(buffer, 0, TAMANHO_BUFFER);
+
+    char *lista = malloc(sizeof(char)*TAMANHO_BUFFER);
+    char idEquipamento[TAMANHO_ID];
     bool temEquipamento = false;
 
     for(int posicao = 0; posicao < MAX_EQUIPAMENTOS; posicao++) {
-        if(equipamentos[posicao] && (posicao + 1) != idSolicitante) {
+        if(equipamento_existe_e_nao_eh_o_solicitante(equipamentos, posicao, idSolicitante)) {
             temEquipamento = true;
             if(posicao + 1 < 10) {
                 sprintf(idEquipamento, "0%d ", posicao + 1);
@@ -56,7 +63,7 @@ bool pode_enviar_broadcast(int indice, int idEquipamento) {
     return (sockets[indice] != 0 && (indice + 1) != idEquipamento);
 }
 
-void enviar_broadcast(char buffer[BUFSZ], char* idEquipamento) {
+void enviar_broadcast(char buffer[TAMANHO_BUFFER], char* idEquipamento) {
 
     int id = atoi(idEquipamento);
     for(int posicao = 0; posicao < MAX_EQUIPAMENTOS; posicao++)
@@ -66,7 +73,7 @@ void enviar_broadcast(char buffer[BUFSZ], char* idEquipamento) {
 
 char* formatar_id_equipamento(char* idEquipamento) {
     if(atoi(idEquipamento) < 10){
-        char *idModificado = malloc(sizeof(char)*4);
+        char *idModificado = malloc(sizeof(char)*TAMANHO_ID);
         strcpy(idModificado, "0");
         strcat(idModificado, idEquipamento);
         return idModificado;
@@ -75,25 +82,34 @@ char* formatar_id_equipamento(char* idEquipamento) {
 }
 
 double gerar_leitura_equipamento() {
+    // Gera um valor aleatório entre 0.00 e 10.00:
     return (double)(rand() % 1001)/100;
 }
 
-void enviar_informacao_equipamento(char buffer[BUFSZ], char *idSolicitante, char *idRequisitado) {
+void enviar_informacao_equipamento(char buffer[TAMANHO_BUFFER], char *idSolicitante, char *idRequisitado) {
     double informacao = gerar_leitura_equipamento();
     sprintf(buffer, "6,%s,%s,%.2f", idRequisitado, idSolicitante, informacao);
 }
 
-void requisitar_informacao_equipamento(char buffer[BUFSZ], int idEquipamento) {
-    
-    char msg[BUFSZ];
-    memset(msg, 0, BUFSZ);
+bool equipamento_existe(int idEquipamento) {
 
-    char *idSolicitante = malloc(sizeof(char)*4);
+    return equipamentos[idEquipamento-1];
+}
+
+void requisitar_informacao_equipamento(char buffer[TAMANHO_BUFFER], int idEquipamento) {
+    
+    // String que guardará a mensagem:
+    char msg[TAMANHO_BUFFER];
+    memset(msg, 0, TAMANHO_BUFFER);
+
+    // Pegando o id do solicitante formatado:
+    char *idSolicitante = malloc(sizeof(char)*TAMANHO_ID);
     sprintf(idSolicitante, "%d", idEquipamento);
     idSolicitante = formatar_id_equipamento(idSolicitante);
 
-    char *idRequisitado = malloc(sizeof(char)*BUFSZ);
-    memset(idRequisitado, 0, BUFSZ);
+    // Pegando o id do equipamento requistado:
+    char *idRequisitado = malloc(sizeof(char)*TAMANHO_BUFFER);
+    memset(idRequisitado, 0, TAMANHO_BUFFER);
     idRequisitado = strtok(buffer, " ");
     idRequisitado = strtok(NULL, " ");
     idRequisitado = strtok(NULL, " ");
@@ -102,14 +118,14 @@ void requisitar_informacao_equipamento(char buffer[BUFSZ], int idEquipamento) {
     int numBytes;
     int socketSolicitante = sockets[idEquipamento-1];
 
-    if(!equipamentos[idEquipamento-1]) {
+    if(!equipamento_existe(idEquipamento)) {
         strcat(msg, "07,");
         strcat(msg, idSolicitante);
         strcat(msg, ",-,02");
         printf("Equipment %s not found\n", idSolicitante);
         numBytes = send(socketSolicitante, msg, strlen(msg)+1, 0);
     }
-    else if(!equipamentos[atoi(idRequisitado)-1]) {
+    else if(!equipamento_existe(atoi(idRequisitado))) {
         strcat(msg, "07,-,");
         strcat(msg, idRequisitado);
         strcat(msg, ",03");
@@ -117,6 +133,7 @@ void requisitar_informacao_equipamento(char buffer[BUFSZ], int idEquipamento) {
         numBytes = send(socketSolicitante, msg, strlen(msg)+1, 0);
     }
     else {
+        // Prosseguindo com a requisição e envio de informação:
         int socketRequisitado = sockets[atoi(idRequisitado)-1];
         strcat(msg, "05,");
         strcat(msg, idSolicitante);
@@ -134,27 +151,31 @@ void requisitar_informacao_equipamento(char buffer[BUFSZ], int idEquipamento) {
 void remover_equipamento(int idSolicitante) {
 
     int numBytes;
-    char msg[BUFSZ];
-    memset(msg, 0, BUFSZ);
-    char *idEquipamento = malloc(sizeof(char)*4);
+    // String que guardará a mensagem:
+    char msg[TAMANHO_BUFFER];
+    memset(msg, 0, TAMANHO_BUFFER);
+
+    // Pegando o id do solicitante formatado:
+    char *idEquipamento = malloc(sizeof(char)*TAMANHO_ID);
     sprintf(idEquipamento, "%d", idSolicitante);
     idEquipamento = formatar_id_equipamento(idEquipamento);
     int socketEquipamento = sockets[idSolicitante-1];
 
-    if(!equipamentos[idSolicitante-1]) {
+    if(!equipamento_existe(idSolicitante)) {
         strcat(msg, "07,-,");
         strcat(msg, idEquipamento);
         strcat(msg, ",01");
         numBytes = send(socketEquipamento, msg, strlen(msg)+1, 0);
     }
     else {
+        // Prosseguindo com a remoção e notificação dessa remoção:
         strcat(msg, "08,-,");
         strcat(msg, idEquipamento);
         strcat(msg, ",01");
         printf("Equipment %s removed\n", idEquipamento);
         numEquipamentos--;
         numBytes = send(socketEquipamento, msg, strlen(msg)+1, 0);
-        memset(msg, 0, BUFSZ);
+        memset(msg, 0, TAMANHO_BUFFER);
         sprintf(msg, "02,%s,-,-", idEquipamento);
         enviar_broadcast(msg, idEquipamento);
         close(sockets[idSolicitante-1]);
@@ -167,17 +188,26 @@ void remover_equipamento(int idSolicitante) {
     }
 }
 
-int adicionar_equipamento(char buffer[BUFSZ], int socketEquipamento) {
+bool atingiu_max_equipamentos() {
+    
+    return numEquipamentos == MAX_EQUIPAMENTOS;
+}
 
-    char *idEquipamento = malloc(sizeof(char)*4);
-    strcpy(idEquipamento, "ne"); // not exist
+int adicionar_equipamento(char buffer[TAMANHO_BUFFER], int socketEquipamento) {
 
-    char msg[BUFSZ];
-    memset(msg, 0, BUFSZ);
-    if(numEquipamentos == MAX_EQUIPAMENTOS)
+    char *idEquipamento = malloc(sizeof(char)*TAMANHO_ID);
+    strcpy(idEquipamento, EQUIPAMENTO_NAO_EXISTE);
+
+    // String que guardará a mensagem:
+    char msg[TAMANHO_BUFFER];
+    memset(msg, 0, TAMANHO_BUFFER);
+
+
+    if(atingiu_max_equipamentos())
         strcat(msg, "07,-,-,04");
     else{
-        for(int posicao = 0; posicao < MAX_EQUIPAMENTOS; posicao++){
+        // Prosseguindo com a adição e notificação dessa adição:
+        for(int posicao = 0; posicao < MAX_EQUIPAMENTOS; posicao++){    
             if(!equipamentos[posicao]) {
                 equipamentos[posicao] = true;
                 sockets[posicao] = socketEquipamento;
@@ -196,20 +226,21 @@ int adicionar_equipamento(char buffer[BUFSZ], int socketEquipamento) {
 
     if(numBytes != strlen(msg)+1)
         exibir_log_saida("send");
-    if(strcmp(idEquipamento, "ne") != 0 && numEquipamentos > 1) {
-        memset(msg, 0, BUFSZ);
+    if(strcmp(idEquipamento, EQUIPAMENTO_NAO_EXISTE) != 0 && numEquipamentos > 1) {
+        memset(msg, 0, TAMANHO_BUFFER);
         sprintf(msg, "01,%s,-,-", idEquipamento);
         enviar_broadcast(msg, idEquipamento);
     }
     return atoi(idEquipamento);
 }
 
-void interpretar_entrada(char buffer[BUFSZ], int idEquipamento){
+void interpretar_entrada(char buffer[TAMANHO_BUFFER], int idEquipamento){
     
-    char bufferAux[BUFSZ];
-    memset(bufferAux, 0, BUFSZ);
+    char bufferAux[TAMANHO_BUFFER];
+    memset(bufferAux, 0, TAMANHO_BUFFER);
     strcpy(bufferAux, buffer);
-    strtok(bufferAux, " ");
+    strtok(bufferAux, " "); // Pegando o primeiro trecho da entrada para depois verificar se é um caso de requisição de informação
+
     if(strcmp(buffer, "list equipments\n") == 0)
         listar_equipamentos(buffer, idEquipamento);
     else if(strcmp(buffer, "close connection\n") == 0)
@@ -229,15 +260,15 @@ void * client_thread(void *data) {
     struct sockaddr *enderecoEquip = (struct sockaddr *) (&equipData->storage);
 
     int idEquipamento = 0;
-    char enderecoEquipStr[BUFSZ];
-    converter_endereco_em_string(enderecoEquip, enderecoEquipStr, BUFSZ);
+    char enderecoEquipStr[TAMANHO_BUFFER];
+    converter_endereco_em_string(enderecoEquip, enderecoEquipStr, TAMANHO_BUFFER);
     //printf("[log] connection from %s\n", enderecoEquipStr);
 
-    char buffer[BUFSZ];
-    memset(buffer, 0, BUFSZ);
+    char buffer[TAMANHO_BUFFER];
+    memset(buffer, 0, TAMANHO_BUFFER);
     
-    char resposta[BUFSZ];
-    memset(resposta, 0, BUFSZ);
+    char resposta[TAMANHO_BUFFER];
+    memset(resposta, 0, TAMANHO_BUFFER);
     
     idEquipamento = adicionar_equipamento(buffer, equipData->equipSocket);
     if(!idEquipamento){
@@ -247,9 +278,9 @@ void * client_thread(void *data) {
     printf("%s\n", buffer);
     
     while(1){
-        memset(buffer, 0, BUFSZ);
-        recv(sockets[idEquipamento-1], buffer, BUFSZ - 1, 0);
-        memset(resposta, 0, BUFSZ);
+        memset(buffer, 0, TAMANHO_BUFFER);
+        recv(sockets[idEquipamento-1], buffer, TAMANHO_BUFFER - 1, 0);
+        memset(resposta, 0, TAMANHO_BUFFER);
         interpretar_entrada(buffer, idEquipamento);
         
         int numBytes = send(sockets[idEquipamento-1], buffer, strlen(buffer) + 1, 0);
@@ -292,8 +323,8 @@ int main(int argc, char **argv) {
         exibir_log_saida("listen");
     }
 
-    char enderecoStr[BUFSZ];
-    converter_endereco_em_string(endereco, enderecoStr, BUFSZ);
+    char enderecoStr[TAMANHO_BUFFER];
+    converter_endereco_em_string(endereco, enderecoStr, TAMANHO_BUFFER);
 
     while (1) {
         struct sockaddr_storage cstorage;
