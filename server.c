@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -11,7 +12,7 @@
 #include <sys/types.h>
 
 #define BUFSZ 500
-#define MAX_EQUIPAMENTOS 15  
+#define MAX_EQUIPAMENTOS 15
 
 int sockets[MAX_EQUIPAMENTOS] = { 0 };
 bool equipamentos[MAX_EQUIPAMENTOS] = { false };
@@ -33,7 +34,7 @@ void listar_equipamentos(char buffer[BUFSZ], int idSolicitante){
     for(int posicao = 0; posicao < MAX_EQUIPAMENTOS; posicao++) {
         if(equipamentos[posicao] && (posicao + 1) != idSolicitante) {
             temEquipamento = true;
-            if(posicao < 10) {
+            if(posicao + 1 < 10) {
                 sprintf(idEquipamento, "0%d ", posicao + 1);
                 strcat(lista, idEquipamento);
             }
@@ -71,6 +72,63 @@ char* formatar_id_equipamento(char* idEquipamento) {
         return idModificado;
     }
     return idEquipamento;
+}
+
+double gerar_leitura_equipamento() {
+    return (double)(rand() % 1001)/100;
+}
+
+void enviar_informacao_equipamento(char buffer[BUFSZ], char *idSolicitante, char *idRequisitado) {
+    double informacao = gerar_leitura_equipamento();
+    sprintf(buffer, "6,%s,%s,%.2f", idRequisitado, idSolicitante, informacao);
+}
+
+void requisitar_informacao_equipamento(char buffer[BUFSZ], int idEquipamento) {
+    
+    char msg[BUFSZ];
+    memset(msg, 0, BUFSZ);
+
+    char *idSolicitante = malloc(sizeof(char)*4);
+    sprintf(idSolicitante, "%d", idEquipamento);
+    idSolicitante = formatar_id_equipamento(idSolicitante);
+
+    char *idRequisitado = malloc(sizeof(char)*BUFSZ);
+    memset(idRequisitado, 0, BUFSZ);
+    idRequisitado = strtok(buffer, " ");
+    idRequisitado = strtok(NULL, " ");
+    idRequisitado = strtok(NULL, " ");
+    idRequisitado = strtok(NULL, "\n");
+    
+    int numBytes;
+    int socketSolicitante = sockets[idEquipamento-1];
+
+    if(!equipamentos[idEquipamento-1]) {
+        strcat(msg, "07,");
+        strcat(msg, idSolicitante);
+        strcat(msg, ",-,02");
+        printf("Equipment %s not found\n", idSolicitante);
+        numBytes = send(socketSolicitante, msg, strlen(msg)+1, 0);
+    }
+    else if(!equipamentos[atoi(idRequisitado)-1]) {
+        strcat(msg, "07,-,");
+        strcat(msg, idRequisitado);
+        strcat(msg, ",03");
+        printf("Equipment %s not found\n", idRequisitado);
+        numBytes = send(socketSolicitante, msg, strlen(msg)+1, 0);
+    }
+    else {
+        int socketRequisitado = sockets[atoi(idRequisitado)-1];
+        strcat(msg, "05,");
+        strcat(msg, idSolicitante);
+        strcat(msg, ",");
+        strcat(msg, idRequisitado);
+        strcat(msg, ",-");        
+        numBytes = send(socketRequisitado, msg, strlen(msg)+1, 0);
+        enviar_informacao_equipamento(buffer, idSolicitante, idRequisitado);
+    }
+    if(numBytes != strlen(msg)+1) {
+        exibir_log_saida("send");
+    }
 }
 
 void remover_equipamento(int idSolicitante) {
@@ -127,7 +185,7 @@ int adicionar_equipamento(char buffer[BUFSZ], int socketEquipamento) {
                 strcat(msg, "03,-,-,");
                 strcat(msg, idEquipamento);
                 idEquipamento = formatar_id_equipamento(idEquipamento);
-                sprintf(buffer, "Equipment %s added\n", idEquipamento);
+                sprintf(buffer, "Equipment %s added", idEquipamento);
                 numEquipamentos++;
                 break;
             }
@@ -148,14 +206,16 @@ int adicionar_equipamento(char buffer[BUFSZ], int socketEquipamento) {
 
 void interpretar_entrada(char buffer[BUFSZ], int idEquipamento){
     
-    char aux[BUFSZ];
-    memset(aux, 0, BUFSZ);
-    strcpy(aux, buffer);
-    strtok(aux, " ");
+    char bufferAux[BUFSZ];
+    memset(bufferAux, 0, BUFSZ);
+    strcpy(bufferAux, buffer);
+    strtok(bufferAux, " ");
     if(strcmp(buffer, "list equipments\n") == 0)
         listar_equipamentos(buffer, idEquipamento);
     else if(strcmp(buffer, "close connection\n") == 0)
         remover_equipamento(idEquipamento);
+    else if(strcmp(bufferAux, "request") == 0)
+        requisitar_informacao_equipamento(buffer, idEquipamento);
 }
 
 void exibir_instrucoes_de_uso(int argc, char **argv) {
@@ -203,6 +263,7 @@ void * client_thread(void *data) {
 }
 
 int main(int argc, char **argv) {
+    srand((unsigned) time(NULL));
     if (argc < 2) {
         exibir_instrucoes_de_uso(argc, argv);
     }

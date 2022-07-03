@@ -15,6 +15,16 @@ struct equipamento {
     int socketEquip;
 };
 
+void interpretar_res_inf(char *idEquipamento, char *informacao) {
+
+	printf("Value from %s: %s\n", idEquipamento, informacao);
+}
+
+void interpretar_req_inf() {
+
+	printf("requested information\n");
+}
+
 void interpretar_req_rem(char *idEquipamento) {
 
 	printf("Equipment %s removed\n", idEquipamento);
@@ -36,14 +46,18 @@ void interpretar_erro(int socketEquipamento, char *idDestino, char *payload) {
 	case 1:
 		printf("Equipment not found\n");
 		break;
+	case 2:
+		printf("Source equipment not found\n");
+		break;
+	case 3:
+		printf("Target equipment not found\n");
+		break;
 	case 4:
 		printf("Equipment limit exceeded\n");
 		break;
 	default:
 		break;
     }
-	close(socketEquipamento);
-	exit(EXIT_SUCCESS);
 }
 
 void interpretar_res_add(char *payload){
@@ -70,7 +84,7 @@ void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
 	char *idMsg = strtok(buffer, ",");
 	char *idOrigem = strtok(NULL, ",");
 	char *idDestino = strtok(NULL, ",");
-	char *payload = strtok(NULL, "");
+	char *payload = strtok(NULL, "\n");
 
 	switch (atoi(idMsg)) {	
 	case 1:
@@ -84,6 +98,12 @@ void interpretar_resposta(char buffer[BUFSZ], int socketEquipamento){
 		break;
 	case 4:
 		interpretar_res_list(payload);
+		break;
+	case 5:
+		interpretar_req_inf();
+		break;
+	case 6:
+		interpretar_res_inf(idOrigem, payload);
 		break;
 	case 7:
 		interpretar_erro(socketEquipamento, idDestino, payload);
